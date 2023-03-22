@@ -2,9 +2,9 @@ const path = require("path");
 
 const express = require("express");
 const cookieParser = require("cookie-parser");
-const { body, validationResult } = require("express-validator");
 
 const autenticateUser = require("../middleware/auth");
+const { validateUser } = require("../middleware/validation");
 const userController = require("../controllers/user");
 const upload = require("../utils/upload");
 
@@ -16,7 +16,7 @@ router.use(express.static(path.join(__dirname, "..", "public")));
 
 router.get("/register", userController.getRegister);
 
-router.post("/register", userController.postRegister);
+router.post("/register", validateUser, userController.postRegister);
 
 router.get("/login", userController.getLogin);
 

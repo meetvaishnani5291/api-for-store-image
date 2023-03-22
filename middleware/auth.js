@@ -1,29 +1,27 @@
 const jwt = require("jsonwebtoken");
 
 const User = require("../models/user");
+const {
+  ValidationError,
+  AutenticationError,
+  ImageUploadError,
+} = require("../utils/error");
 
-module.exports = (req, res, next) => {
+module.exports = async (req, res, next) => {
   const authToken = req.cookies["auth-token"];
-  if (authToken === "deleted") {
-    res.render("login", { message: undefined, isLoggedin: false, name: "" });
+  if (authToken === undefined) {
+    next(new AutenticationError("please login!"));
   }
   const loggedUser = jwt.verify(authToken, "MY SECRET");
-
   if (loggedUser) {
-    User.fetchUser(loggedUser).then((user) => {
-      if (user) {
-        req.user = user;
-        console.log("ause authn");
-        next();
-      } else {
-        res.render("login", {
-          message: undefined,
-          isLoggedin: false,
-          name: "",
-        });
-      }
-    });
+    const user = await User.fetchUser(loggedUser);
+    if (user) {
+      req.user = user;
+      next();
+    } else {
+      next(new AutenticationError("User not found!"));
+    }
   } else {
-    res.render("login", { message: undefined, isLoggedin: false, name: "" });
+    next(new AutenticationError("Session expired"));
   }
 };

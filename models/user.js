@@ -1,28 +1,26 @@
-const fs = require("fs");
+const fs = require("fs/promises");
 const path = require("path");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
-const util = require("util");
+
+const {
+  ValidationError,
+  AutenticationError,
+  ImageUploadError,
+} = require("../utils/error");
+
 const userDataFile = path.join(__dirname, "../", "data", "users.json");
 
-const readFilePromise = util.promisify(fs.readFile);
-
-const getUsersFromFile = async (cb) => {
-  const fileCont = await readFilePromise(userDataFile);
-  // fs.readFile(userDataFile, (err, fileContent) => {
-  //   if (err) {
-  //     cb([]);
-  //   } else {
-  //     cb(JSON.parse(fileContent));
-  //   }
-  // });
+const getUsersFromFile = async () => {
+  const fileContent = await fs.readFile(userDataFile);
+  const users = JSON.parse(fileContent);
+  return users;
 };
 
-const saveUsersToFile = (users) => {
-  fs.writeFile(userDataFile, JSON.stringify(users), (err) => {
-    console.log(err);
-  });
+const saveUsersToFile = async (users) => {
+  const newFileContent = JSON.stringify(users);
+  const result = await fs.writeFile(userDataFile, newFileContent);
 };
 
 const getHashedPassword = async (password) => {
@@ -33,59 +31,45 @@ const getHashedPassword = async (password) => {
 
 exports.register = async (newUser) => {
   newUser.password = await getHashedPassword(newUser.password);
-  return new Promise(function (resolve, reject) {
-    getUsersFromFile((users) => {
-      if (users.some((user) => user.email === newUser.email)) {
-        resolve({
-          status: false,
-          message: "User with this email already exists",
-        });
-      } else {
-        users.push({
-          name: newUser.name,
-          email: newUser.email,
-          password: newUser.password,
-          images: [],
-        });
-        saveUsersToFile(users);
-        resolve({ status: true, message: "User added successfully." });
-      }
+
+  const users = await getUsersFromFile();
+  if (users.some((user) => user.email === newUser.email)) {
+    throw new ValidationError("User with this email already exist");
+  } else {
+    users.push({
+      name: newUser.name,
+      email: newUser.email,
+      password: newUser.password,
+      images: [],
     });
-  });
+    await saveUsersToFile(users);
+    return { status: true, message: "User added successfully." };
+  }
 };
 exports.login = async (newUser) => {
-  return new Promise(function (resolve, reject) {
-    getUsersFromFile(async (users) => {
-      const user = users.find((user) => user.email === newUser.email);
-      if (user === undefined) {
-        resolve({ status: false, message: "User not found!" });
-        return;
-      }
-      const validPass = await bcrypt.compare(newUser.password, user.password);
-      if (!validPass) {
-        resolve({ status: false, message: "Wrong password!" });
-        return;
-      }
-      const token = jwt.sign(user, "MY SECRET");
-      resolve({ status: true, token });
-    });
-  });
+  const users = await getUsersFromFile();
+
+  const user = users.find((user) => user.email === newUser.email);
+  if (user === undefined) {
+    throw new AutenticationError("Invalid Email");
+  }
+  const validPass = await bcrypt.compare(newUser.password, user.password);
+  if (!validPass) {
+    throw new AutenticationError("Invalid Password");
+  }
+  const token = jwt.sign(user, "MY SECRET");
+  return { status: true, token };
 };
 exports.saveImage = async (loggedUser, image, title) => {
-  return new Promise(function (resolve, reject) {
-    getUsersFromFile(async (users) => {
-      const user = users.find((user) => user.email === loggedUser.email);
-      user.images.push({ title, path: image });
-      saveUsersToFile(users);
-      resolve({ status: true, message: "Image uploaded successfully" });
-    });
-  });
+  const users = await getUsersFromFile();
+
+  const user = users.find((user) => user.email === loggedUser.email);
+  user.images.push({ title, path: image });
+  await saveUsersToFile(users);
+  return { status: true, message: "Image uploaded successfully" };
 };
 exports.fetchUser = async (loggedUser) => {
-  return new Promise(function (resolve, reject) {
-    getUsersFromFile(async (users) => {
-      const user = users.find((user) => user.email === loggedUser.email);
-      resolve(user);
-    });
-  });
+  const users = await getUsersFromFile();
+
+  return users.find((user) => user.email === loggedUser.email);
 };
